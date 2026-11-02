@@ -236,12 +236,12 @@ model Payment {
 model PaymentEvent {
   id              String   @id @default(uuid())
   providerEventId String   @unique @map("provider_event_id") // webhook idempotency
-  paymentId       String   @map("payment_id")
+  paymentId       String?  @map("payment_id")
   eventType       String   @map("event_type")
   raw             Json
   processedAt     DateTime @default(now()) @map("processed_at")
 
-  payment Payment @relation(fields: [paymentId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   @@map("payment_events")
 }
@@ -252,8 +252,9 @@ model IdempotencyKey {
   key          String
   route        String
   requestHash  String   @map("request_hash")
-  statusCode   Int      @map("status_code")
-  responseBody Json     @map("response_body")
+  status       String   @default("processing") // "processing" | "completed"
+  statusCode   Int?     @map("status_code")
+  responseBody Json?    @map("response_body")
   createdAt    DateTime @default(now()) @map("created_at")
   expiresAt    DateTime @map("expires_at")
 

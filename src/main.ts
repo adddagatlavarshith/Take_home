@@ -8,9 +8,13 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { AuditInterceptor } from './audit/audit.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true, // Required for HMAC webhook signature verification
+  });
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
@@ -37,6 +41,10 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  // Audit all writes
+  const auditInterceptor = app.get(AuditInterceptor);
+  app.useGlobalInterceptors(auditInterceptor);
 
   // OpenAPI
   if (nodeEnv !== 'production') {

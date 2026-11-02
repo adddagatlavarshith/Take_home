@@ -61,4 +61,24 @@ export class MetricsService implements OnModuleInit {
   onModuleInit() {
     // Metrics registered on construction; nothing additional needed
   }
+
+  recordBooking(status: string) {
+    this.bookingsTotal.inc({ status });
+  }
+
+  recordConsultation(status: string) {
+    this.consultationsTotal.inc({ status });
+  }
+
+  recordPayment(status: string) {
+    this.paymentsTotal.inc({ status });
+  }
+
+  recordIdempotencyReplay() {
+    this.idempotencyReplays.inc();
+  }
+
+  recordDoubleBookingRejection() {
+    this.doubleBookingRejections.inc();
+  }
 }
