@@ -129,6 +129,7 @@ model AvailabilityRule {
 
   doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
+  @@unique([doctorId, weekday])
   @@map("availability_rules")
 }
 

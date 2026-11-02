@@ -1,0 +1,157 @@
+erDiagram
+    users {
+        uuid id PK
+        string email UK
+        string password_hash
+        enum role "patient|doctor|admin"
+        bool mfa_enabled
+        string mfa_secret
+        bool email_verified
+        enum status "active|suspended|banned"
+        timestamp created_at
+    }
+
+    profiles {
+        uuid id PK
+        uuid user_id FK
+        string first_name
+        string last_name
+        string phone_encrypted
+        date date_of_birth
+        enum gender
+    }
+
+    doctors {
+        uuid id PK
+        uuid user_id FK
+        string[] specialties
+        int years_experience
+        int consultation_fee_cents
+        enum mode "online|in_person|both"
+        string bio
+        decimal rating
+        bool verified
+    }
+
+    availability_rules {
+        uuid id PK
+        uuid doctor_id FK
+        int weekday "0-6"
+        string start_time "HH:MM"
+        string end_time "HH:MM"
+        int slot_duration_min
+        enum mode
+    }
+
+    availability_slots {
+        uuid id PK
+        uuid doctor_id FK
+        timestamp start_at
+        timestamp end_at
+        enum mode
+        enum status "available|held|payment_pending|booked|blocked"
+        timestamp held_until
+        uuid consultation_id FK
+    }
+
+    consultations {
+        uuid id PK
+        uuid patient_id FK
+        uuid doctor_id FK
+        uuid slot_id FK
+        enum status "pending_payment|scheduled|in_progress|completed|cancelled|no_show"
+        enum mode
+        timestamp scheduled_start
+        timestamp scheduled_end
+        timestamp started_at
+        timestamp ended_at
+        string cancellation_reason
+    }
+
+    prescriptions {
+        uuid id PK
+        uuid consultation_id FK
+        uuid doctor_id FK
+        uuid patient_id
+        int version
+        timestamp signed_at
+        string notes_encrypted
+    }
+
+    prescription_items {
+        uuid id PK
+        uuid prescription_id FK
+        string drug_name
+        string dosage
+        string frequency
+        int duration_days
+        string instructions
+    }
+
+    payments {
+        uuid id PK
+        uuid consultation_id FK
+        uuid user_id FK
+        int amount_cents
+        string currency
+        string provider_ref
+        enum status "initiated|authorized|captured|refunded|failed"
+    }
+
+    payment_events {
+        uuid id PK
+        string provider_event_id UK
+        uuid payment_id FK
+        string event_type
+        json raw
+        timestamp processed_at
+    }
+
+    idempotency_keys {
+        uuid id PK
+        uuid user_id FK
+        string key
+        string route
+        string request_hash
+        string status
+        int status_code
+        json response_body
+        timestamp expires_at
+    }
+
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        string token_hash
+        timestamp expires_at
+        timestamp revoked_at
+    }
+
+    audit_logs {
+        uuid id PK
+        uuid actor_user_id FK
+        string actor_role
+        string action
+        string entity_type
+        string entity_id
+        json before
+        json after
+        string request_id
+        string ip
+        timestamp created_at
+    }
+
+    users ||--|| profiles : "has"
+    users ||--o| doctors : "is"
+    doctors ||--o{ availability_rules : "defines"
+    doctors ||--o{ availability_slots : "owns"
+    consultations ||--|| availability_slots : "occupies"
+    consultations }o--|| users : "patient"
+    consultations }o--|| doctors : "doctor"
+    consultations ||--o{ prescriptions : "has"
+    prescriptions ||--o{ prescription_items : "contains"
+    consultations ||--o{ payments : "paid by"
+    payments ||--o{ payment_events : "receives"
+    users ||--o{ idempotency_keys : "owns"
+    users ||--o{ refresh_tokens : "holds"
+    users ||--o{ audit_logs : "acts in"

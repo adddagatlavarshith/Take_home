@@ -1,0 +1,65 @@
+sequenceDiagram
+    participant P as Patient
+    participant API as API Server
+    participant DB as PostgreSQL
+    participant Q as BullMQ Worker
+    participant GW as MockPaymentGateway
+
+    Note over P,GW: Happy Path — Booking to Completion
+
+    P->>API: GET /v1/doctors?specialty=Cardiology
+    API->>DB: SELECT w/ indexed filters
+    DB-->>API: doctor list
+    API-->>P: {data: [...], total, page}
+
+    P->>API: GET /v1/doctors/{id}/slots?from=…&to=…
+    API->>DB: SELECT WHERE status='available'
+    DB-->>API: slot list
+    API-->>P: {data: [slot1, slot2, …]}
+
+    P->>API: POST /v1/bookings/hold\nIdempotency-Key: key-001\n{slotId}
+    API->>DB: UPDATE slots SET status='held' WHERE id=… AND status='available' RETURNING *
+    Note over DB: Row-level lock + EXCLUDE constraint
+    DB-->>API: {slot, doctor, consultationFeeCents}
+    API->>DB: INSERT consultations (status=pending_payment)
+    DB-->>API: consultation row
+    API-->>P: {holdId, slotId, heldUntil, doctor}
+
+    P->>API: POST /v1/bookings/{holdId}/confirm\nIdempotency-Key: key-002\n{paymentMethodToken}
+    API->>DB: UPDATE slots SET status='payment_pending'
+    API->>GW: createIntent(amountCents, metadata)
+    GW-->>API: {id: pi_mock_xxx, clientSecret}
+    API->>DB: INSERT payments (status=initiated)
+    API-->>P: {paymentId, providerRef, clientSecret, amountCents}
+
+    GW->>API: POST /v1/payments/webhook\n{id: evt_xxx, type: payment.captured, data.object.id: pi_mock_xxx}
+    Note over API: Verify HMAC-SHA256
+    API->>DB: INSERT payment_events (providerEventId UNIQUE)
+    API->>DB: UPDATE payments SET status=captured
+    API->>DB: UPDATE slots SET status=booked
+    API->>DB: UPDATE consultations SET status=scheduled
+    API-->>GW: {processed: true}
+
+    Note over P,GW: Consultation lifecycle
+
+    P->>API: GET /v1/consultations/{id}
+    API-->>P: {status: scheduled, scheduledStart, doctor}
+
+    API->>API: Doctor logs in\nPOST /v1/consultations/{id}/start
+    API->>DB: UPDATE consultations SET status=in_progress
+    API-->>API: {status: in_progress, startedAt}
+
+    API->>API: POST /v1/consultations/{id}/complete
+    API->>DB: UPDATE consultations SET status=completed
+    API-->>API: {status: completed, endedAt}
+
+    API->>API: POST /v1/consultations/{id}/prescriptions\n{items: [{drugName,dosage,…}]}
+    API->>DB: INSERT prescriptions (version=1, signedAt)
+    API->>DB: INSERT prescription_items
+    API-->>API: {id, version, items}
+
+    Note over Q: Background — expired hold release
+
+    Q->>DB: SELECT slots WHERE status IN (held,payment_pending) AND held_until < now()
+    DB-->>Q: expired slots
+    Q->>DB: UPDATE slots SET status=available; UPDATE consultations SET status=cancelled
